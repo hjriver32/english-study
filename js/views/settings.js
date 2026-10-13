@@ -70,7 +70,9 @@ export async function render(el) {
       for (const k of keys) rows[k] = await store.load(k, true);
       const day = todayStr();
       if (fmt === 'json') {
-        download(`english-study-backup-${day}.json`, JSON.stringify({ exportedAt: day, people: rows }, null, 2), 'application/json');
+        const quizDays = {};
+        for (const k of keys) quizDays[k] = await store.loadQuizDays(k, true);
+        download(`english-study-backup-${day}.json`, JSON.stringify({ exportedAt: day, people: rows, quizDays }, null, 2), 'application/json');
       } else {
         const lines = ['사람,날짜,영어,한글'];
         for (const k of keys) {

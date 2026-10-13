@@ -31,8 +31,8 @@ export function shuffle(arr) {
 }
 
 // ---- streak ----
-export function calcStreak(sentences) {
-  const days = [...new Set(sentences.map((s) => s.date))].sort();
+export function calcStreak(dates) {
+  const days = [...new Set(dates)].sort();
   if (!days.length) return { current: 0, best: 0, doneToday: false };
   const set = new Set(days);
   const today = todayStr();
@@ -85,6 +85,9 @@ export function periodLabel(period) {
   if (period === 'this') return '이번 달';
   return monthLabel(period);
 }
+
+// Answer matching: ignore case, spaces and punctuation (Unicode letters/digits only).
+export const normalizeAnswer = (s) => String(s ?? '').normalize('NFC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
 
 // newest first
 export const sortNewest = (list) =>

@@ -3,7 +3,7 @@ import { PEOPLE, esc, todayStr, calcStreak } from '../utils.js';
 
 const pad = (n) => String(n).padStart(2, '0');
 
-function calendarHtml(key, sentences, ym) {
+function calendarHtml(key, sentences, quizDays, ym) {
   const [y, m] = ym.split('-').map(Number);
   const counts = {};
   for (const s of sentences) counts[s.date] = (counts[s.date] || 0) + 1;
@@ -15,11 +15,12 @@ function calendarHtml(key, sentences, ym) {
   for (let d = 1; d <= days; d++) {
     const ds = `${y}-${pad(m)}-${pad(d)}`;
     const c = counts[ds] || 0;
-    const lvl = c === 0 ? 0 : c < 3 ? 1 : c < 6 ? 2 : 3;
-    const cls = `day lvl${lvl}${ds === today ? ' today' : ''}`;
+    const quizOnly = !c && !!quizDays[ds];
+    const lvl = quizOnly ? 1 : c === 0 ? 0 : c < 3 ? 1 : c < 6 ? 2 : 3;
+    const cls = `day lvl${lvl}${quizOnly ? ' quizonly' : ''}${ds === today ? ' today' : ''}`;
     cells += c
       ? `<a class="${cls}" href="#/${key}/list?date=${ds}" title="${c}문장">${d}</a>`
-      : `<span class="${cls}">${d}</span>`;
+      : `<span class="${cls}"${quizOnly ? ' title="퀴즈 완료"' : ''}>${d}</span>`;
   }
   return `<div class="cal-head">
       <button class="icon-btn" data-nav="-1" data-key="${key}" aria-label="이전 달">‹</button>
@@ -36,10 +37,13 @@ export async function render(el, { isStale }) {
   const main = el.querySelector('main');
 
   let data;
+  let quizData;
   try {
     const keys = Object.keys(PEOPLE);
     const lists = await Promise.all(keys.map((k) => store.load(k, true)));
+    const quiz = await Promise.all(keys.map((k) => store.loadQuizDays(k, true)));
     data = Object.fromEntries(keys.map((k, i) => [k, lists[i]]));
+    quizData = Object.fromEntries(keys.map((k, i) => [k, quiz[i]]));
   } catch (e) {
     main.innerHTML = `<p class="error">${esc(e.message)}</p><button class="btn" onclick="location.reload()">다시 시도</button>`;
     return;
@@ -51,7 +55,7 @@ export async function render(el, { isStale }) {
   const draw = () => {
     main.innerHTML = Object.values(PEOPLE).map((p) => {
       const list = data[p.key];
-      const st = calcStreak(list);
+      const st = calcStreak([...list.map((s) => s.date), ...Object.keys(quizData[p.key])]);
       const status = st.doneToday
         ? '<span class="badge ok">✅ 오늘 완료</span>'
         : `<span class="badge">⏳ 아직${st.current ? ` · 오늘 등록하면 ${st.current + 1}일!` : ''}</span>`;
@@ -66,7 +70,7 @@ export async function render(el, { isStale }) {
           <div><b>${st.best}</b><small>최장 연속</small></div>
         </div>
         <div>${status}</div>
-        <div class="cal" data-key="${p.key}">${calendarHtml(p.key, list, months[p.key])}</div>
+        <div class="cal" data-key="${p.key}">${calendarHtml(p.key, list, quizData[p.key], months[p.key])}</div>
       </section>`;
     }).join('');
   };
@@ -79,6 +83,6 @@ export async function render(el, { isStale }) {
     const [y, m] = months[key].split('-').map(Number);
     const d = new Date(Date.UTC(y, m - 1 + Number(b.dataset.nav), 1));
     months[key] = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}`;
-    main.querySelector(`.cal[data-key="${key}"]`).innerHTML = calendarHtml(key, data[key], months[key]);
+    main.querySelector(`.cal[data-key="${key}"]`).innerHTML = calendarHtml(key, data[key], quizData[key], months[key]);
   });
 }

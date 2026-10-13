@@ -75,6 +75,17 @@ mark { background: #ffe58a; color: #000; border-radius: 3px; padding: 0 1px; }
 .a-box { margin-top: auto; }
 .a-box.shown { border-top: 1px dashed var(--line); padding-top: 14px; }
 .a-box.shown .q-text { color: var(--accent); }
+.row .grow { flex: 1; }
+.small-msg { font-size: 14px; margin: 0 0 8px; }
+.verdict { font-weight: 700; font-size: 18px; margin-bottom: 8px; }
+.verdict.ok { color: var(--ok); } .verdict.bad { color: var(--danger); }
+.score { font-size: 72px; font-weight: 800; line-height: 1.1; color: var(--accent); }
+.score small { font-size: 24px; margin-left: 4px; }
+.item.right { border-left: 4px solid var(--ok); cursor: default; }
+.item.wrong { border-left: 4px solid var(--danger); cursor: default; }
+.day.quizonly::after { content: ""; position: absolute; }
+.day { position: relative; }
+.day.lvl1.quizonly { background: transparent; border: 2px dashed var(--accent); }
 .nav-row { display: flex; gap: 10px; } .nav-row .btn { flex: 1; }
 .person-card { border-top: 4px solid var(--accent); }
 .pc-head { display: flex; align-items: center; justify-content: space-between; }
