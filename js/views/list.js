@@ -1,5 +1,5 @@
 import * as store from '../store.js';
-import { esc, highlight, sortNewest, filterByPeriod, periodSelectHtml, periodLabel, toast } from '../utils.js';
+import { esc, highlight, sortNewest, filterByPeriod, periodSelectHtml, periodLabel, toast, isWrongNote, wrongLabel } from '../utils.js';
 
 const state = { period: 'all', q: '' };
 
@@ -13,6 +13,10 @@ export async function render(el, { person, query, isStale }) {
     return;
   }
   if (isStale()) return;
+  let stats = {};
+  try { stats = (await store.loadQuiz(person.key, true)).stats; } catch { /* badges are optional */ }
+  if (isStale()) return;
+  const wrongBadge = (s) => (isWrongNote(stats[s.id]) ? `<span class="wrong-badge">❌ 오답 ${wrongLabel(stats[s.id])}</span>` : '');
 
   let date = query.get('date') || '';
   let editing = null;
@@ -66,6 +70,7 @@ export async function render(el, { person, query, isStale }) {
         } else {
           html += `<article class="item${open === s.id ? ' open' : ''}" data-id="${s.id}">
             <div class="en">${highlight(s.en, q)}</div><div class="ko">${highlight(s.ko, q)}</div>
+            ${wrongBadge(s)}
             ${open === s.id ? '<div class="actions"><button class="btn" data-act="edit">수정</button><button class="btn danger" data-act="delete">삭제</button></div>' : ''}
           </article>`;
         }

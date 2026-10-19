@@ -1,18 +1,21 @@
 import * as store from '../store.js';
-import { esc, shuffle, filterByPeriod, periodSelectHtml, normalizeAnswer, toast } from '../utils.js';
+import { esc, shuffle, filterByPeriod, periodSelectHtml, normalizeAnswer, toast, isWrongNote } from '../utils.js';
 
 const KEY = 'es.quiz';
+const DEFAULTS = { dir: 'ko-en', period: 'all', count: 'all', wrongOnly: false };
 const loadPrefs = () => {
-  try { return { dir: 'ko-en', period: 'all', count: 'all', ...JSON.parse(localStorage.getItem(KEY) || '{}') }; }
-  catch { return { dir: 'ko-en', period: 'all', count: 'all' }; }
+  try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; }
+  catch { return { ...DEFAULTS }; }
 };
 const savePrefs = (p) => { try { localStorage.setItem(KEY, JSON.stringify(p)); } catch { /* ignore */ } };
 
 export async function render(el, { person, isStale }) {
   el.innerHTML = '<p class="muted">불러오는 중…</p>';
   let sentences;
+  let stats = {};
   try {
     sentences = await store.load(person.key, true);
+    stats = (await store.loadQuiz(person.key, true)).stats;
   } catch (e) {
     el.innerHTML = `<p class="error">${esc(e.message)}</p>`;
     return;
@@ -26,9 +29,15 @@ export async function render(el, { person, isStale }) {
       .catch((e) => toast('인증 기록 저장 실패: ' + e.message, 4000));
   };
 
+  const getPool = () => {
+    const byPeriod = filterByPeriod(sentences, prefs.period);
+    return prefs.wrongOnly ? byPeriod.filter((s) => isWrongNote(stats[s.id])) : byPeriod;
+  };
+
   const setup = () => {
-    const pool = filterByPeriod(sentences, prefs.period);
+    const pool = getPool();
     const n = pool.length;
+    const wrongTotal = sentences.filter((s) => isWrongNote(stats[s.id])).length;
     const counts = [];
     for (let c = 10; c < n; c += 10) counts.push(c);
     if (prefs.count !== 'all' && !counts.includes(Number(prefs.count))) prefs.count = 'all';
@@ -42,14 +51,27 @@ export async function render(el, { person, isStale }) {
         </div>
         <h2 class="section-title">출제 기간</h2>
         ${periodSelectHtml('period', sentences, prefs.period)}
-        <p class="muted">이 기간 문장 ${n}개</p>
+        <h2 class="section-title">오답 복습</h2>
+        <div class="seg" id="wrong">
+          <button data-v="0" class="${prefs.wrongOnly ? '' : 'on'}">전체 문장</button>
+          <button data-v="1" class="${prefs.wrongOnly ? 'on' : ''}">오답만 (${wrongTotal})</button>
+        </div>
+        <p class="muted">오답률 10% 이상인 문장이 오답으로 분류돼요.</p>
+        <p class="muted"><b>조건에 맞는 문장 ${n}개</b></p>
         <h2 class="section-title">문제 수</h2>
         <div class="seg wrap" id="count">
           <button data-v="all" class="${prefs.count === 'all' ? 'on' : ''}">전체 (${n})</button>
           ${counts.map((c) => `<button data-v="${c}" class="${Number(prefs.count) === c ? 'on' : ''}">${c}</button>`).join('')}
         </div>
-        <button id="start" class="btn primary block" ${n ? '' : 'disabled'}>${n ? '시작' : '문장이 없어요'}</button>
+        <button id="start" class="btn primary block" ${n ? '' : 'disabled'}>${n ? '시작' : prefs.wrongOnly ? '오답 문장이 없어요 🎉' : '문장이 없어요'}</button>
       </section>`;
+    el.querySelector('#wrong').onclick = (e) => {
+      if (e.target.dataset.v === undefined) return;
+      prefs.wrongOnly = e.target.dataset.v === '1';
+      prefs.count = 'all';
+      savePrefs(prefs);
+      setup();
+    };
 
     el.querySelector('#dir').onclick = (e) => { if (e.target.dataset.v) { prefs.dir = e.target.dataset.v; savePrefs(prefs); setup(); } };
     el.querySelector('#count').onclick = (e) => { if (e.target.dataset.v) { prefs.count = e.target.dataset.v; savePrefs(prefs); setup(); } };
@@ -58,7 +80,7 @@ export async function render(el, { person, isStale }) {
   };
 
   const start = () => {
-    const pool = filterByPeriod(sentences, prefs.period);
+    const pool = getPool();
     const total = prefs.count === 'all' ? pool.length : Math.min(Number(prefs.count), pool.length);
     play(shuffle(pool).slice(0, total));
   };
@@ -70,6 +92,18 @@ export async function render(el, { person, isStale }) {
     const retry = deck.map(() => false); // last check was a miss
     const [qk, ak] = prefs.dir === 'ko-en' ? ['ko', 'en'] : ['en', 'ko'];
     const label = (k) => (k === 'ko' ? '한글' : '영어');
+
+    // Final result of each answered question is saved once per set (and when leaving the page mid-set).
+    const saved = new Set();
+    const flush = () => {
+      const batch = deck.map((s, k) => ({ id: s.id, correct: res[k] === 'c', k })).filter((r) => res[r.k] && !saved.has(r.k));
+      if (!batch.length) return;
+      batch.forEach((r) => saved.add(r.k));
+      store.recordResults(person.key, batch.map(({ id, correct }) => ({ id, correct })))
+        .then((next) => { stats = next; })
+        .catch((e) => { batch.forEach((r) => saved.delete(r.k)); toast('오답 기록 저장 실패: ' + e.message, 4000); });
+    };
+    window.addEventListener('hashchange', flush, { once: true });
 
     const draw = () => {
       const s = deck[i];
@@ -116,6 +150,7 @@ export async function render(el, { person, isStale }) {
         if (i < deck.length - 1) { i++; draw(); return; }
         const open = res.filter((x) => !x).length;
         if (open && !confirm(`아직 안 푼 문제 ${open}개는 오답으로 처리돼요. 끝낼까요?`)) return;
+        flush();
         done(deck, res, ak);
       };
     };

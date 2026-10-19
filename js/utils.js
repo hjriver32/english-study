@@ -103,6 +103,11 @@ export function periodLabel(period) {
 // Answer matching: ignore case, spaces and punctuation (Unicode letters/digits only).
 export const normalizeAnswer = (s) => String(s ?? '').normalize('NFC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
 
+// A sentence is a "wrong note" when its cumulative wrong rate is 10% or more.
+export const WRONG_RATE = 0.1;
+export const isWrongNote = (stat) => !!stat && stat.tries > 0 && stat.wrong / stat.tries >= WRONG_RATE;
+export const wrongLabel = (stat) => `${stat.wrong}/${stat.tries} (${Math.round((stat.wrong / stat.tries) * 100)}%)`;
+
 // newest first
 export const sortNewest = (list) =>
   list.slice().sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));

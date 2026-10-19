@@ -2,7 +2,7 @@ import { readJson, writeJson, ApiError } from './github.js';
 import { newId, nowIso, todayStr } from './utils.js';
 
 const cache = {}; // person -> sentences[]
-const quizCache = {}; // person -> { 'YYYY-MM-DD': {...} }
+const quizCache = {}; // person -> { days: { 'YYYY-MM-DD': {...} }, stats: { [sentenceId]: { tries, wrong } } }
 const pathOf = (p) => `data/${p}.json`;
 const quizPathOf = (p) => `data/${p}-quiz.json`;
 
@@ -13,12 +13,14 @@ export async function load(person, force = false) {
   return cache[person];
 }
 
-export async function loadQuizDays(person, force = false) {
+export async function loadQuiz(person, force = false) {
   if (!force && quizCache[person]) return quizCache[person];
   const { data } = await readJson(quizPathOf(person));
-  quizCache[person] = data.days || {};
+  quizCache[person] = { days: data.days || {}, stats: data.stats || {} };
   return quizCache[person];
 }
+
+export const loadQuizDays = async (person, force = false) => (await loadQuiz(person, force)).days;
 
 export const invalidate = () => {
   for (const k of Object.keys(cache)) delete cache[k];
@@ -69,6 +71,25 @@ export async function markQuizDay(person) {
     (d) => ({ ...d, version: 1, days: { ...(d.days || {}), [today]: (d.days || {})[today] || { at: nowIso() } } }),
     `quiz: ${person}`,
   );
-  quizCache[person] = next.days;
+  quizCache[person] = { days: next.days, stats: next.stats || quizCache[person]?.stats || {} };
   return true;
+}
+
+// results: [{ id, correct }] — final result of each answered question in a quiz set.
+export async function recordResults(person, results) {
+  if (!results.length) return (await loadQuiz(person)).stats;
+  const next = await mutateFile(
+    quizPathOf(person),
+    (d) => {
+      const stats = { ...(d.stats || {}) };
+      for (const r of results) {
+        const s = stats[r.id] || { tries: 0, wrong: 0 };
+        stats[r.id] = { tries: s.tries + 1, wrong: s.wrong + (r.correct ? 0 : 1), last: nowIso() };
+      }
+      return { ...d, version: 1, stats };
+    },
+    `quiz-stats: ${person}`,
+  );
+  quizCache[person] = { days: next.days || quizCache[person]?.days || {}, stats: next.stats };
+  return next.stats;
 }
