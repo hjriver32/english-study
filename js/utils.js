@@ -56,10 +56,19 @@ export function calcStreak(dates) {
 // ---- period filter ----
 export const monthLabel = (ym) => `${ym.slice(0, 4)}년 ${Number(ym.slice(5, 7))}월`;
 
+// This week = Sunday..Saturday (same as the calendar), in KST.
+export function weekRange() {
+  const today = todayStr();
+  const dow = new Date(today + 'T00:00:00Z').getUTCDay();
+  const start = dayNum(today) - dow;
+  return [fromDayNum(start), fromDayNum(start + 6)];
+}
+
 export function periodOptions(sentences) {
   const months = [...new Set(sentences.map((s) => s.date.slice(0, 7)))].sort().reverse();
   const opts = [
     { value: 'all', label: '전체' },
+    { value: 'week', label: '이번 주' },
     { value: 'this', label: '이번 달' },
   ];
   for (const m of months) opts.push({ value: m, label: monthLabel(m) });
@@ -68,6 +77,10 @@ export function periodOptions(sentences) {
 
 export function filterByPeriod(sentences, period) {
   if (period === 'all') return sentences;
+  if (period === 'week') {
+    const [from, to] = weekRange();
+    return sentences.filter((s) => s.date >= from && s.date <= to);
+  }
   const ym = period === 'this' ? thisMonth() : period;
   return sentences.filter((s) => s.date.startsWith(ym));
 }
@@ -82,6 +95,7 @@ export function periodSelectHtml(id, sentences, selected) {
 
 export function periodLabel(period) {
   if (period === 'all') return '전체';
+  if (period === 'week') return '이번 주';
   if (period === 'this') return '이번 달';
   return monthLabel(period);
 }
