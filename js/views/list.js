@@ -1,7 +1,7 @@
 import * as store from '../store.js';
-import { esc, highlight, sortNewest, filterByPeriod, periodSelectHtml, periodLabel, toast, isWrongNote, wrongLabel } from '../utils.js';
+import { esc, highlight, sortNewest, filterByPeriod, periodLabel, mountPeriodControl, todayStr, toast, isWrongNote, isReviewTarget, wrongLabel } from '../utils.js';
 
-const state = { period: 'all', q: '' };
+const state = { period: { unit: 'all', anchor: todayStr() }, q: '' };
 
 export async function render(el, { person, query, isStale }) {
   el.innerHTML = '<p class="muted">불러오는 중…</p>';
@@ -16,7 +16,11 @@ export async function render(el, { person, query, isStale }) {
   let stats = {};
   try { stats = (await store.loadQuiz(person.key, true)).stats; } catch { /* badges are optional */ }
   if (isStale()) return;
-  const wrongBadge = (s) => (isWrongNote(stats[s.id]) ? `<span class="wrong-badge">❌ 오답 ${wrongLabel(stats[s.id])}</span>` : '');
+  const wrongBadge = (s) => {
+    if (!isWrongNote(stats[s.id])) return '';
+    const skip = isReviewTarget(stats[s.id]) ? '' : ' · 복습 제외';
+    return `<span class="wrong-badge">❌ 오답 ${wrongLabel(stats[s.id])}${skip}</span>`;
+  };
 
   let date = query.get('date') || '';
   let editing = null;
@@ -24,16 +28,12 @@ export async function render(el, { person, query, isStale }) {
 
   el.innerHTML = `
     <section class="card filters">
-      <div class="row">${periodSelectHtml('period', sentences, state.period)}</div>
+      <div id="period"></div>
       <input id="q" type="search" placeholder="영어 또는 한글 검색" value="${esc(state.q)}" autocomplete="off">
       <div id="date-chip"></div>
     </section>
     <div id="count" class="muted count"></div>
     <div id="results" class="list"></div>`;
-
-  const periodSel = el.querySelector('#period');
-  periodSel.value = state.period in { all: 1, this: 1 } || [...periodSel.options].some((o) => o.value === state.period) ? state.period : 'all';
-  state.period = periodSel.value;
 
   const draw = () => {
     el.querySelector('#date-chip').innerHTML = date
@@ -80,7 +80,7 @@ export async function render(el, { person, query, isStale }) {
   };
   draw();
 
-  periodSel.addEventListener('change', () => { state.period = periodSel.value; date = ''; draw(); });
+  mountPeriodControl(el.querySelector('#period'), state.period, () => { date = ''; draw(); });
   el.querySelector('#q').addEventListener('input', (e) => { state.q = e.target.value; draw(); });
   el.addEventListener('click', async (e) => {
     if (e.target.id === 'clear-date') { date = ''; history.replaceState(null, '', `#/${person.key}/list`); draw(); return; }

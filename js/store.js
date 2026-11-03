@@ -84,7 +84,12 @@ export async function recordResults(person, results) {
       const stats = { ...(d.stats || {}) };
       for (const r of results) {
         const s = stats[r.id] || { tries: 0, wrong: 0 };
-        stats[r.id] = { tries: s.tries + 1, wrong: s.wrong + (r.correct ? 0 : 1), last: nowIso() };
+        stats[r.id] = {
+          seen: (s.seen ?? s.tries ?? 0) + 1,
+          tries: (s.tries || 0) + 1,
+          wrong: (s.wrong || 0) + (r.correct ? 0 : 1),
+          last: nowIso(),
+        };
       }
       return { ...d, version: 1, stats };
     },

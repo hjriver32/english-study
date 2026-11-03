@@ -11,7 +11,6 @@ const kst = (ms = Date.now()) => new Date(ms + KST_MS);
 
 export const todayStr = () => kst().toISOString().slice(0, 10);
 export const nowIso = () => kst().toISOString().slice(0, 19) + '+09:00';
-export const thisMonth = () => todayStr().slice(0, 7);
 
 export const newId = () => Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
 
@@ -54,58 +53,83 @@ export function calcStreak(dates) {
 }
 
 // ---- period filter ----
-export const monthLabel = (ym) => `${ym.slice(0, 4)}년 ${Number(ym.slice(5, 7))}월`;
+// A period is { unit: 'all' | 'day' | 'week' | 'month', anchor: 'YYYY-MM-DD' }.
+// day = that date, week = Monday..Sunday containing the anchor, month = calendar month containing the anchor.
+const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
+const pad2 = (n) => String(n).padStart(2, '0');
+const dowOf = (s) => new Date(s + 'T00:00:00Z').getUTCDay();
+const mdw = (s) => `${Number(s.slice(5, 7))}/${Number(s.slice(8, 10))}(${WEEKDAYS[dowOf(s)]})`;
 
-// This week = Sunday..Saturday (same as the calendar), in KST.
-export function weekRange() {
-  const today = todayStr();
-  const dow = new Date(today + 'T00:00:00Z').getUTCDay();
-  const start = dayNum(today) - dow;
-  return [fromDayNum(start), fromDayNum(start + 6)];
-}
-
-export function periodOptions(sentences) {
-  const months = [...new Set(sentences.map((s) => s.date.slice(0, 7)))].sort().reverse();
-  const opts = [
-    { value: 'all', label: '전체' },
-    { value: 'week', label: '이번 주' },
-    { value: 'this', label: '이번 달' },
-  ];
-  for (const m of months) opts.push({ value: m, label: monthLabel(m) });
-  return opts;
-}
-
-export function filterByPeriod(sentences, period) {
-  if (period === 'all') return sentences;
-  if (period === 'week') {
-    const [from, to] = weekRange();
-    return sentences.filter((s) => s.date >= from && s.date <= to);
+export function periodRange(unit, anchor) {
+  if (unit === 'all') return null;
+  if (unit === 'day') return [anchor, anchor];
+  if (unit === 'week') {
+    const start = dayNum(anchor) - ((dowOf(anchor) + 6) % 7);
+    return [fromDayNum(start), fromDayNum(start + 6)];
   }
-  const ym = period === 'this' ? thisMonth() : period;
-  return sentences.filter((s) => s.date.startsWith(ym));
+  const [y, m] = anchor.split('-').map(Number);
+  return [`${y}-${pad2(m)}-01`, `${y}-${pad2(m)}-${pad2(new Date(Date.UTC(y, m, 0)).getUTCDate())}`];
 }
 
-export function periodSelectHtml(id, sentences, selected) {
-  const opts = periodOptions(sentences);
-  if (!opts.some((o) => o.value === selected)) selected = 'all';
-  return `<select id="${id}">${opts
-    .map((o) => `<option value="${o.value}"${o.value === selected ? ' selected' : ''}>${esc(o.label)}</option>`)
-    .join('')}</select>`;
+export function filterByPeriod(sentences, { unit, anchor }) {
+  const r = periodRange(unit, anchor);
+  return r ? sentences.filter((s) => s.date >= r[0] && s.date <= r[1]) : sentences;
 }
 
-export function periodLabel(period) {
-  if (period === 'all') return '전체';
-  if (period === 'week') return '이번 주';
-  if (period === 'this') return '이번 달';
-  return monthLabel(period);
+export function periodLabel({ unit, anchor }) {
+  if (unit === 'all') return '전체';
+  const [from, to] = periodRange(unit, anchor);
+  if (unit === 'day') return `${Number(from.slice(0, 4))}년 ${Number(from.slice(5, 7))}월 ${Number(from.slice(8, 10))}일 (${WEEKDAYS[dowOf(from)]})`;
+  if (unit === 'week') return `${mdw(from)} ~ ${mdw(to)}`;
+  return `${Number(from.slice(0, 4))}년 ${Number(from.slice(5, 7))}월`;
+}
+
+function shiftAnchor(unit, anchor, dir) {
+  if (unit === 'day') return fromDayNum(dayNum(anchor) + dir);
+  if (unit === 'week') return fromDayNum(dayNum(anchor) + 7 * dir);
+  const [y, m] = anchor.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1 + dir, 1)).toISOString().slice(0, 10);
+}
+
+// Renders "전체 / 하루 / 일주일 / 한달" + ‹ date › into host and keeps `state` ({unit, anchor}) up to date.
+export function mountPeriodControl(host, state, onChange) {
+  const UNITS = [['all', '전체'], ['day', '하루'], ['week', '일주일'], ['month', '한달']];
+  const draw = () => {
+    host.innerHTML = `
+      <div class="seg" data-role="unit">${UNITS.map(([v, l]) => `<button data-unit="${v}" class="${state.unit === v ? 'on' : ''}">${l}</button>`).join('')}</div>
+      ${state.unit === 'all' ? '' : `
+        <div class="range-nav">
+          <button class="icon-btn" data-nav="-1" aria-label="이전">‹</button>
+          <input type="date" value="${state.anchor}" aria-label="기준 날짜">
+          <button class="icon-btn" data-nav="1" aria-label="다음">›</button>
+        </div>
+        <div class="range-label">${esc(periodLabel(state))}</div>`}`;
+  };
+  const changed = () => { draw(); onChange(); };
+  host.onclick = (e) => {
+    const u = e.target.closest('[data-unit]');
+    const n = e.target.closest('[data-nav]');
+    if (u) { state.unit = u.dataset.unit; changed(); }
+    else if (n) { state.anchor = shiftAnchor(state.unit, state.anchor, Number(n.dataset.nav)); changed(); }
+  };
+  host.onchange = (e) => {
+    if (e.target.type === 'date' && e.target.value) { state.anchor = e.target.value; changed(); }
+  };
+  draw();
 }
 
 // Answer matching: ignore case, spaces and punctuation (Unicode letters/digits only).
 export const normalizeAnswer = (s) => String(s ?? '').normalize('NFC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
 
 // A sentence is a "wrong note" when its cumulative wrong rate is 10% or more.
+// At 75% or more it is left out of the wrong-review quiz.
 export const WRONG_RATE = 0.1;
-export const isWrongNote = (stat) => !!stat && stat.tries > 0 && stat.wrong / stat.tries >= WRONG_RATE;
+export const REVIEW_MAX_RATE = 0.75;
+const rateOf = (stat) => (stat && stat.tries > 0 ? stat.wrong / stat.tries : 0);
+export const isWrongNote = (stat) => rateOf(stat) >= WRONG_RATE;
+export const isReviewTarget = (stat) => isWrongNote(stat) && rateOf(stat) < REVIEW_MAX_RATE;
+// How many times the sentence has been asked. `seen` survives rate resets; older records only have `tries`.
+export const seenCount = (stat) => (stat ? stat.seen ?? stat.tries ?? 0 : 0);
 export const wrongLabel = (stat) => `${stat.wrong}/${stat.tries} (${Math.round((stat.wrong / stat.tries) * 100)}%)`;
 
 // newest first

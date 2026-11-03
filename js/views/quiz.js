@@ -1,8 +1,8 @@
 import * as store from '../store.js';
-import { esc, shuffle, filterByPeriod, periodSelectHtml, normalizeAnswer, toast, isWrongNote } from '../utils.js';
+import { esc, shuffle, filterByPeriod, mountPeriodControl, todayStr, normalizeAnswer, toast, isReviewTarget, seenCount } from '../utils.js';
 
 const KEY = 'es.quiz';
-const DEFAULTS = { dir: 'ko-en', period: 'all', count: 'all', wrongOnly: false };
+const DEFAULTS = { dir: 'ko-en', unit: 'all', count: 'all', wrongOnly: false };
 const loadPrefs = () => {
   try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; }
   catch { return { ...DEFAULTS }; }
@@ -22,6 +22,7 @@ export async function render(el, { person, isStale }) {
   }
   if (isStale()) return;
   const prefs = loadPrefs();
+  const period = { unit: prefs.unit, anchor: todayStr() }; // which day/week/month; only the unit is remembered
 
   // Any answered question (check or reveal) counts as today's completion.
   const markDone = () => {
@@ -30,14 +31,21 @@ export async function render(el, { person, isStale }) {
   };
 
   const getPool = () => {
-    const byPeriod = filterByPeriod(sentences, prefs.period);
-    return prefs.wrongOnly ? byPeriod.filter((s) => isWrongNote(stats[s.id])) : byPeriod;
+    const byPeriod = filterByPeriod(sentences, period);
+    return prefs.wrongOnly ? byPeriod.filter((s) => isReviewTarget(stats[s.id])) : byPeriod;
+  };
+
+  // Sentences that have been asked the fewest times come first (never-asked ones lead); ties are random.
+  const pickDeck = (pool, total) => {
+    const ranked = shuffle(pool).sort((a, b) => seenCount(stats[a.id]) - seenCount(stats[b.id]));
+    return shuffle(ranked.slice(0, total));
   };
 
   const setup = () => {
     const pool = getPool();
     const n = pool.length;
-    const wrongTotal = sentences.filter((s) => isWrongNote(stats[s.id])).length;
+    const wrongTotal = filterByPeriod(sentences, period).filter((s) => isReviewTarget(stats[s.id])).length;
+    const unseen = pool.filter((s) => seenCount(stats[s.id]) === 0).length;
     const counts = [];
     for (let c = 10; c < n; c += 10) counts.push(c);
     if (prefs.count !== 'all' && !counts.includes(Number(prefs.count))) prefs.count = 'all';
@@ -50,14 +58,14 @@ export async function render(el, { person, isStale }) {
           <button data-v="en-ko" class="${prefs.dir === 'en-ko' ? 'on' : ''}">영어 → 한글</button>
         </div>
         <h2 class="section-title">출제 기간</h2>
-        ${periodSelectHtml('period', sentences, prefs.period)}
+        <div id="period"></div>
         <h2 class="section-title">오답 복습</h2>
         <div class="seg" id="wrong">
           <button data-v="0" class="${prefs.wrongOnly ? '' : 'on'}">전체 문장</button>
           <button data-v="1" class="${prefs.wrongOnly ? 'on' : ''}">오답만 (${wrongTotal})</button>
         </div>
-        <p class="muted">오답률 10% 이상인 문장이 오답으로 분류돼요.</p>
-        <p class="muted"><b>조건에 맞는 문장 ${n}개</b></p>
+        <p class="muted">오답률 10% 이상 75% 미만인 문장이 오답 복습에 나와요.</p>
+        <p class="muted"><b>조건에 맞는 문장 ${n}개</b> · 아직 안 나온 문장 ${unseen}개 (먼저 출제돼요)</p>
         <h2 class="section-title">문제 수</h2>
         <div class="seg wrap" id="count">
           <button data-v="all" class="${prefs.count === 'all' ? 'on' : ''}">전체 (${n})</button>
@@ -75,14 +83,14 @@ export async function render(el, { person, isStale }) {
 
     el.querySelector('#dir').onclick = (e) => { if (e.target.dataset.v) { prefs.dir = e.target.dataset.v; savePrefs(prefs); setup(); } };
     el.querySelector('#count').onclick = (e) => { if (e.target.dataset.v) { prefs.count = e.target.dataset.v; savePrefs(prefs); setup(); } };
-    el.querySelector('#period').onchange = (e) => { prefs.period = e.target.value; prefs.count = 'all'; savePrefs(prefs); setup(); };
+    mountPeriodControl(el.querySelector('#period'), period, () => { prefs.unit = period.unit; prefs.count = 'all'; savePrefs(prefs); setup(); });
     el.querySelector('#start').onclick = () => start();
   };
 
   const start = () => {
     const pool = getPool();
     const total = prefs.count === 'all' ? pool.length : Math.min(Number(prefs.count), pool.length);
-    play(shuffle(pool).slice(0, total));
+    play(pickDeck(pool, total));
   };
 
   const play = (deck) => {
