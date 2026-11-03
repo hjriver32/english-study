@@ -54,7 +54,7 @@ export function calcStreak(dates) {
 
 // ---- period filter ----
 // A period is { unit: 'all' | 'day' | 'week' | 'month', anchor: 'YYYY-MM-DD' }.
-// day = that date, week = Monday..Sunday containing the anchor, month = calendar month containing the anchor.
+// day = that date, week = Sunday..Saturday containing the anchor (same as the calendar), month = calendar month containing the anchor.
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 const pad2 = (n) => String(n).padStart(2, '0');
 const dowOf = (s) => new Date(s + 'T00:00:00Z').getUTCDay();
@@ -64,7 +64,7 @@ export function periodRange(unit, anchor) {
   if (unit === 'all') return null;
   if (unit === 'day') return [anchor, anchor];
   if (unit === 'week') {
-    const start = dayNum(anchor) - ((dowOf(anchor) + 6) % 7);
+    const start = dayNum(anchor) - dowOf(anchor);
     return [fromDayNum(start), fromDayNum(start + 6)];
   }
   const [y, m] = anchor.split('-').map(Number);
