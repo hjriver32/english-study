@@ -1,5 +1,5 @@
 import * as store from '../store.js';
-import { esc, shuffle, filterByPeriod, mountPeriodControl, todayStr, normalizeAnswer, toast, isReviewTarget, seenCount } from '../utils.js';
+import { esc, shuffle, filterByPeriod, mountPeriodControl, todayStr, normalizeAnswer, toast, isWrongNote, seenCount } from '../utils.js';
 
 const KEY = 'es.quiz';
 const DEFAULTS = { dir: 'ko-en', unit: 'all', count: 'all', wrongOnly: false };
@@ -32,7 +32,7 @@ export async function render(el, { person, isStale }) {
 
   const getPool = () => {
     const byPeriod = filterByPeriod(sentences, period);
-    return prefs.wrongOnly ? byPeriod.filter((s) => isReviewTarget(stats[s.id])) : byPeriod;
+    return prefs.wrongOnly ? byPeriod.filter((s) => isWrongNote(stats[s.id])) : byPeriod;
   };
 
   // Sentences that have been asked the fewest times come first (never-asked ones lead); ties are random.
@@ -44,7 +44,7 @@ export async function render(el, { person, isStale }) {
   const setup = () => {
     const pool = getPool();
     const n = pool.length;
-    const wrongTotal = filterByPeriod(sentences, period).filter((s) => isReviewTarget(stats[s.id])).length;
+    const wrongTotal = filterByPeriod(sentences, period).filter((s) => isWrongNote(stats[s.id])).length;
     const unseen = pool.filter((s) => seenCount(stats[s.id]) === 0).length;
     const counts = [];
     for (let c = 10; c < n; c += 10) counts.push(c);
@@ -64,7 +64,7 @@ export async function render(el, { person, isStale }) {
           <button data-v="0" class="${prefs.wrongOnly ? '' : 'on'}">전체 문장</button>
           <button data-v="1" class="${prefs.wrongOnly ? 'on' : ''}">오답만 (${wrongTotal})</button>
         </div>
-        <p class="muted">오답률 10% 이상 75% 미만인 문장이 오답 복습에 나와요.</p>
+        <p class="muted">오답률 25% 이상인 문장만 오답 복습에 나와요.</p>
         <p class="muted"><b>조건에 맞는 문장 ${n}개</b> · 아직 안 나온 문장 ${unseen}개 (먼저 출제돼요)</p>
         <h2 class="section-title">문제 수</h2>
         <div class="seg wrap" id="count">

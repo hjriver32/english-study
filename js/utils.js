@@ -121,13 +121,10 @@ export function mountPeriodControl(host, state, onChange) {
 // Answer matching: ignore case, spaces and punctuation (Unicode letters/digits only).
 export const normalizeAnswer = (s) => String(s ?? '').normalize('NFC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
 
-// A sentence is a "wrong note" when its cumulative wrong rate is 10% or more.
-// At 75% or more it is left out of the wrong-review quiz.
-export const WRONG_RATE = 0.1;
-export const REVIEW_MAX_RATE = 0.75;
-const rateOf = (stat) => (stat && stat.tries > 0 ? stat.wrong / stat.tries : 0);
-export const isWrongNote = (stat) => rateOf(stat) >= WRONG_RATE;
-export const isReviewTarget = (stat) => isWrongNote(stat) && rateOf(stat) < REVIEW_MAX_RATE;
+// A sentence is a "wrong note" (and appears in the wrong-review quiz) while its cumulative wrong rate is 25% or more.
+// e.g. 1/1=100%, 1/2=50%, 1/3=33%, 1/4=25% still count; 1/5=20% drops out.
+export const WRONG_RATE = 0.25;
+export const isWrongNote = (stat) => !!stat && stat.tries > 0 && stat.wrong / stat.tries >= WRONG_RATE;
 // How many times the sentence has been asked. `seen` survives rate resets; older records only have `tries`.
 export const seenCount = (stat) => (stat ? stat.seen ?? stat.tries ?? 0 : 0);
 export const wrongLabel = (stat) => `${stat.wrong}/${stat.tries} (${Math.round((stat.wrong / stat.tries) * 100)}%)`;

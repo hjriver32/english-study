@@ -1,5 +1,5 @@
 import * as store from '../store.js';
-import { esc, highlight, sortNewest, filterByPeriod, periodLabel, mountPeriodControl, todayStr, toast, isWrongNote, isReviewTarget, wrongLabel } from '../utils.js';
+import { esc, highlight, sortNewest, filterByPeriod, periodLabel, mountPeriodControl, todayStr, toast, isWrongNote, wrongLabel } from '../utils.js';
 
 const state = { period: { unit: 'all', anchor: todayStr() }, q: '' };
 
@@ -16,11 +16,7 @@ export async function render(el, { person, query, isStale }) {
   let stats = {};
   try { stats = (await store.loadQuiz(person.key, true)).stats; } catch { /* badges are optional */ }
   if (isStale()) return;
-  const wrongBadge = (s) => {
-    if (!isWrongNote(stats[s.id])) return '';
-    const skip = isReviewTarget(stats[s.id]) ? '' : ' · 복습 제외';
-    return `<span class="wrong-badge">❌ 오답 ${wrongLabel(stats[s.id])}${skip}</span>`;
-  };
+  const wrongBadge = (s) => (isWrongNote(stats[s.id]) ? `<span class="wrong-badge">❌ 오답 ${wrongLabel(stats[s.id])}</span>` : '');
 
   let date = query.get('date') || '';
   let editing = null;
