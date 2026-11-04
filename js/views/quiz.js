@@ -67,10 +67,10 @@ export async function render(el, { person, isStale }) {
         <p class="muted">오답률 25% 이상인 문장만 오답 복습에 나와요.</p>
         <p class="muted"><b>조건에 맞는 문장 ${n}개</b> · 아직 안 나온 문장 ${unseen}개 (먼저 출제돼요)</p>
         <h2 class="section-title">문제 수</h2>
-        <div class="seg wrap" id="count">
-          <button data-v="all" class="${prefs.count === 'all' ? 'on' : ''}">전체 (${n})</button>
-          ${counts.map((c) => `<button data-v="${c}" class="${Number(prefs.count) === c ? 'on' : ''}">${c}</button>`).join('')}
-        </div>
+        <select id="count">
+          <option value="all"${prefs.count === 'all' ? ' selected' : ''}>전체 (${n}문제)</option>
+          ${counts.map((c) => `<option value="${c}"${Number(prefs.count) === c ? ' selected' : ''}>${c}문제</option>`).join('')}
+        </select>
         <button id="start" class="btn primary block" ${n ? '' : 'disabled'}>${n ? '시작' : prefs.wrongOnly ? '오답 문장이 없어요 🎉' : '문장이 없어요'}</button>
       </section>`;
     el.querySelector('#wrong').onclick = (e) => {
@@ -82,7 +82,7 @@ export async function render(el, { person, isStale }) {
     };
 
     el.querySelector('#dir').onclick = (e) => { if (e.target.dataset.v) { prefs.dir = e.target.dataset.v; savePrefs(prefs); setup(); } };
-    el.querySelector('#count').onclick = (e) => { if (e.target.dataset.v) { prefs.count = e.target.dataset.v; savePrefs(prefs); setup(); } };
+    el.querySelector('#count').onchange = (e) => { prefs.count = e.target.value; savePrefs(prefs); setup(); };
     mountPeriodControl(el.querySelector('#period'), period, () => { prefs.unit = period.unit; prefs.count = 'all'; savePrefs(prefs); setup(); });
     el.querySelector('#start').onclick = () => start();
   };
