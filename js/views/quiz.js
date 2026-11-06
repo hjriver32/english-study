@@ -113,7 +113,50 @@ export async function render(el, { person, isStale }) {
     };
     window.addEventListener('hashchange', flush, { once: true });
 
+    // Voice input (browser speech recognition). The recognition language follows the answer language.
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let rec = null;
+    const stopRec = () => {
+      if (!rec) return;
+      const r = rec;
+      rec = null;
+      r.onresult = r.onerror = r.onend = null;
+      try { r.abort(); } catch { /* already stopped */ }
+    };
+    window.addEventListener('hashchange', stopRec, { once: true });
+    const MIC_ERRORS = {
+      'not-allowed': '마이크 권한이 꺼져 있어요. 브라우저 설정에서 마이크를 허용해 주세요.',
+      'service-not-allowed': '이 환경에서는 음성 인식을 쓸 수 없어요. 브라우저(Safari/Chrome)에서 열어 보세요.',
+      'no-speech': '소리가 들리지 않았어요. 다시 눌러서 말해 주세요.',
+      'audio-capture': '마이크를 찾을 수 없어요.',
+      network: '음성 인식에 필요한 네트워크에 연결할 수 없어요.',
+    };
+    const startMic = (ans, mic) => {
+      if (rec) { rec.stop(); return; } // second tap = stop
+      const r = new SR();
+      rec = r;
+      r.lang = ak === 'en' ? 'en-US' : 'ko-KR';
+      r.interimResults = true;
+      r.continuous = false;
+      r.maxAlternatives = 1;
+      r.onstart = () => { mic.classList.add('listening'); mic.textContent = '🎙️ 듣는 중… (누르면 멈춰요)'; };
+      r.onresult = (e) => {
+        let t = '';
+        for (let k = 0; k < e.results.length; k++) t += e.results[k][0].transcript;
+        ans.value = t.trim();
+        typed[i] = ans.value;
+      };
+      r.onerror = (e) => { if (e.error !== 'aborted') toast(MIC_ERRORS[e.error] || `음성 인식 오류 (${e.error})`, 4000); };
+      r.onend = () => {
+        if (rec === r) rec = null;
+        mic.classList.remove('listening');
+        mic.textContent = '🎤 말해서 입력';
+      };
+      try { r.start(); } catch { rec = null; toast('음성 인식을 시작하지 못했어요.'); }
+    };
+
     const draw = () => {
+      stopRec();
       const s = deck[i];
       const r = res[i];
       const answerBox = r
@@ -130,6 +173,7 @@ export async function render(el, { person, isStale }) {
           <label class="field">${label(ak)} 문장 입력
             <textarea id="ans" rows="3" ${r ? 'disabled' : ''} autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${label(ak)}로 써 보세요">${esc(typed[i])}</textarea>
           </label>
+          ${!r && SR ? '<button id="mic" class="btn mic" type="button">🎤 말해서 입력</button>' : ''}
           ${!r && retry[i] ? '<p class="error small-msg">아쉬워요! 다시 써 보거나 정답 보기를 눌러 주세요. (정답 보기는 오답 처리)</p>' : ''}
           ${r ? '' : '<div class="row gap"><button id="check" class="btn primary grow">정답 확인</button><button id="reveal" class="btn grow">정답 보기</button></div>'}
           ${answerBox}
@@ -141,6 +185,8 @@ export async function render(el, { person, isStale }) {
 
       const ans = el.querySelector('#ans');
       ans.oninput = () => { typed[i] = ans.value; };
+      const mic = el.querySelector('#mic');
+      if (mic) mic.onclick = () => startMic(ans, mic);
       const check = el.querySelector('#check');
       if (check) {
         check.onclick = () => {
@@ -158,6 +204,7 @@ export async function render(el, { person, isStale }) {
         if (i < deck.length - 1) { i++; draw(); return; }
         const open = res.filter((x) => !x).length;
         if (open && !confirm(`아직 안 푼 문제 ${open}개는 오답으로 처리돼요. 끝낼까요?`)) return;
+        stopRec();
         flush();
         done(deck, res, ak);
       };
