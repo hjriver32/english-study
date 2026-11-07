@@ -1,7 +1,10 @@
 import { readJson, writeJson, ApiError } from './github.js';
 import { newId, nowIso, todayStr } from './utils.js';
 
-const cache = {}; // person -> sentences[]
+// "person" below is a dataset name: 'wng' / 'ranie' (sentences) or 'wng-words' / 'ranie-words' (words).
+// Words live in their own files (data/<name>-words.json and <name>-words-quiz.json) under the key `words`.
+const listKey = (ds) => (ds.endsWith('-words') ? 'words' : 'sentences');
+const cache = {}; // dataset -> items[]
 const quizCache = {}; // person -> { days: { 'YYYY-MM-DD': {...} }, stats: { [sentenceId]: { tries, wrong } } }
 const pathOf = (p) => `data/${p}.json`;
 const quizPathOf = (p) => `data/${p}-quiz.json`;
@@ -9,7 +12,7 @@ const quizPathOf = (p) => `data/${p}-quiz.json`;
 export async function load(person, force = false) {
   if (!force && cache[person]) return cache[person];
   const { data } = await readJson(pathOf(person));
-  cache[person] = data.sentences || [];
+  cache[person] = data[listKey(person)] || [];
   return cache[person];
 }
 
@@ -44,9 +47,17 @@ async function mutateFile(path, fn, message) {
 }
 
 async function mutate(person, fn, message) {
-  const next = await mutateFile(pathOf(person), (d) => ({ ...d, version: 1, sentences: fn(d.sentences || []) }), message);
-  cache[person] = next.sentences;
-  return next.sentences;
+  const key = listKey(person);
+  const next = await mutateFile(
+    pathOf(person),
+    (d) => {
+      const { sentences, ...rest } = d; // word files don't carry the empty default `sentences` list
+      return { ...(key === 'words' ? rest : d), version: 1, [key]: fn(d[key] || []) };
+    },
+    message,
+  );
+  cache[person] = next[key];
+  return next[key];
 }
 
 export const add = (person, { en, ko }) => {

@@ -1,20 +1,27 @@
 import * as store from '../store.js';
-import { esc, highlight, sortNewest, filterByPeriod, periodLabel, mountPeriodControl, todayStr, toast, isWrongNote, wrongLabel } from '../utils.js';
+import { esc, highlight, sortNewest, filterByPeriod, periodLabel, mountPeriodControl, todayStr, toast, isWrongNote, wrongLabel, KINDS, datasetOf } from '../utils.js';
 
-const state = { period: { unit: 'all', anchor: todayStr() }, q: '' };
+// filter state is kept separately for sentences and words
+const states = {
+  sentence: { period: { unit: 'all', anchor: todayStr() }, q: '' },
+  word: { period: { unit: 'all', anchor: todayStr() }, q: '' },
+};
 
-export async function render(el, { person, query, isStale }) {
+export async function render(el, { person, kind, query, isStale }) {
+  const state = states[kind];
+  const L = KINDS[kind];
+  const ds = datasetOf(kind, person.key);
   el.innerHTML = '<p class="muted">불러오는 중…</p>';
   let sentences;
   try {
-    sentences = await store.load(person.key, true);
+    sentences = await store.load(ds, true);
   } catch (e) {
     el.innerHTML = `<p class="error">${esc(e.message)}</p>`;
     return;
   }
   if (isStale()) return;
   let stats = {};
-  try { stats = (await store.loadQuiz(person.key, true)).stats; } catch { /* badges are optional */ }
+  try { stats = (await store.loadQuiz(ds, true)).stats; } catch { /* badges are optional */ }
   if (isStale()) return;
   const wrongBadge = (s) => (isWrongNote(stats[s.id]) ? `<span class="wrong-badge">❌ 오답 ${wrongLabel(stats[s.id])}</span>` : '');
 
@@ -41,11 +48,11 @@ export async function render(el, { person, query, isStale }) {
       const ql = q.toLowerCase();
       list = list.filter((s) => s.en.toLowerCase().includes(ql) || s.ko.toLowerCase().includes(ql));
     }
-    const label = [date || periodLabel(state.period), q ? `'${q}'` : '', `${list.length}문장`].filter(Boolean).join(' · ');
+    const label = [date || periodLabel(state.period), q ? `'${q}'` : '', `${list.length}${L.unit === '단어' ? '개' : '문장'}`].filter(Boolean).join(' · ');
     el.querySelector('#count').textContent = label;
 
     if (!list.length) {
-      el.querySelector('#results').innerHTML = '<p class="muted">문장이 없어요.</p>';
+      el.querySelector('#results').innerHTML = `<p class="muted">${L.unit}이(가) 없어요.</p>`;
       return;
     }
     const groups = new Map();
@@ -79,7 +86,7 @@ export async function render(el, { person, query, isStale }) {
   mountPeriodControl(el.querySelector('#period'), state.period, () => { date = ''; draw(); });
   el.querySelector('#q').addEventListener('input', (e) => { state.q = e.target.value; draw(); });
   el.addEventListener('click', async (e) => {
-    if (e.target.id === 'clear-date') { date = ''; history.replaceState(null, '', `#/${person.key}/list`); draw(); return; }
+    if (e.target.id === 'clear-date') { date = ''; history.replaceState(null, '', `#/${person.key}/${kind}/list`); draw(); return; }
     const item = e.target.closest('.item');
     if (!item) return;
     const id = item.dataset.id;
@@ -99,16 +106,16 @@ export async function render(el, { person, query, isStale }) {
       e.target.disabled = true;
       e.target.textContent = '저장 중…';
       try {
-        sentences = await store.update(person.key, id, { en, ko });
+        sentences = await store.update(ds, id, { en, ko });
         editing = null;
         toast('수정했어요 ✅');
       } catch (err) { toast(err.message, 4000); }
       draw();
     } else if (act === 'delete') {
-      if (!confirm('이 문장을 삭제할까요?')) return;
+      if (!confirm(`이 ${L.unit}을(를) 삭제할까요?`)) return;
       e.target.disabled = true;
       try {
-        sentences = await store.remove(person.key, id);
+        sentences = await store.remove(ds, id);
         open = null;
         toast('삭제했어요');
       } catch (err) { toast(err.message, 4000); }

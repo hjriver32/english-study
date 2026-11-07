@@ -1,32 +1,37 @@
 import * as store from '../store.js';
-import { esc, shuffle, filterByPeriod, mountPeriodControl, todayStr, normalizeAnswer, toast, isWrongNote, seenCount } from '../utils.js';
+import { esc, shuffle, filterByPeriod, mountPeriodControl, todayStr, normalizeAnswer, toast, isWrongNote, seenCount, KINDS, datasetOf } from '../utils.js';
 
-const KEY = 'es.quiz';
 const DEFAULTS = { dir: 'ko-en', unit: 'all', count: 'all', wrongOnly: false };
-const loadPrefs = () => {
-  try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; }
+const prefsKey = (kind) => (kind === 'word' ? 'es.quiz.word' : 'es.quiz'); // sentence key unchanged
+const loadPrefs = (kind) => {
+  try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(prefsKey(kind)) || '{}') }; }
   catch { return { ...DEFAULTS }; }
 };
-const savePrefs = (p) => { try { localStorage.setItem(KEY, JSON.stringify(p)); } catch { /* ignore */ } };
+const savePrefs = (kind, p) => { try { localStorage.setItem(prefsKey(kind), JSON.stringify(p)); } catch { /* ignore */ } };
 
-export async function render(el, { person, isStale }) {
+export async function render(el, { person, kind, isStale }) {
+  const L = KINDS[kind];
+  const ds = datasetOf(kind, person.key);
+  const savePrefsNow = (p) => savePrefs(kind, p);
   el.innerHTML = '<p class="muted">불러오는 중…</p>';
   let sentences;
   let stats = {};
   try {
-    sentences = await store.load(person.key, true);
-    stats = (await store.loadQuiz(person.key, true)).stats;
+    sentences = await store.load(ds, true);
+    stats = (await store.loadQuiz(ds, true)).stats;
   } catch (e) {
     el.innerHTML = `<p class="error">${esc(e.message)}</p>`;
     return;
   }
   if (isStale()) return;
-  const prefs = loadPrefs();
+  const prefs = loadPrefs(kind);
   const period = { unit: prefs.unit, anchor: todayStr() }; // which day/week/month; only the unit is remembered
 
   // Any answered question (check or reveal) counts as today's completion.
+  // Only sentence quizzes count for the dashboard calendar; word quizzes leave no daily record.
   const markDone = () => {
-    store.markQuizDay(person.key).then((isNew) => { if (isNew) toast('오늘 완료 인증 ✅'); })
+    if (kind !== 'sentence') return;
+    store.markQuizDay(ds).then((isNew) => { if (isNew) toast('오늘 완료 인증 ✅'); })
       .catch((e) => toast('인증 기록 저장 실패: ' + e.message, 4000));
   };
 
@@ -61,29 +66,29 @@ export async function render(el, { person, isStale }) {
         <div id="period"></div>
         <h2 class="section-title">오답 복습</h2>
         <div class="seg" id="wrong">
-          <button data-v="0" class="${prefs.wrongOnly ? '' : 'on'}">전체 문장</button>
+          <button data-v="0" class="${prefs.wrongOnly ? '' : 'on'}">전체 ${L.unit}</button>
           <button data-v="1" class="${prefs.wrongOnly ? 'on' : ''}">오답만 (${wrongTotal})</button>
         </div>
-        <p class="muted">오답률 25% 이상인 문장만 오답 복습에 나와요.</p>
-        <p class="muted"><b>조건에 맞는 문장 ${n}개</b> · 아직 안 나온 문장 ${unseen}개 (먼저 출제돼요)</p>
+        <p class="muted">오답률 25% 이상인 ${L.unit}만 오답 복습에 나와요.</p>
+        <p class="muted"><b>조건에 맞는 ${L.unit} ${n}개</b> · 아직 안 나온 ${L.unit} ${unseen}개 (먼저 출제돼요)</p>
         <h2 class="section-title">문제 수</h2>
         <select id="count">
           <option value="all"${prefs.count === 'all' ? ' selected' : ''}>전체 (${n}문제)</option>
           ${counts.map((c) => `<option value="${c}"${Number(prefs.count) === c ? ' selected' : ''}>${c}문제</option>`).join('')}
         </select>
-        <button id="start" class="btn primary block" ${n ? '' : 'disabled'}>${n ? '시작' : prefs.wrongOnly ? '오답 문장이 없어요 🎉' : '문장이 없어요'}</button>
+        <button id="start" class="btn primary block" ${n ? '' : 'disabled'}>${n ? '시작' : prefs.wrongOnly ? `오답 ${L.unit}이(가) 없어요 🎉` : `${L.unit}이(가) 없어요`}</button>
       </section>`;
     el.querySelector('#wrong').onclick = (e) => {
       if (e.target.dataset.v === undefined) return;
       prefs.wrongOnly = e.target.dataset.v === '1';
       prefs.count = 'all';
-      savePrefs(prefs);
+      savePrefsNow(prefs);
       setup();
     };
 
-    el.querySelector('#dir').onclick = (e) => { if (e.target.dataset.v) { prefs.dir = e.target.dataset.v; savePrefs(prefs); setup(); } };
-    el.querySelector('#count').onchange = (e) => { prefs.count = e.target.value; savePrefs(prefs); setup(); };
-    mountPeriodControl(el.querySelector('#period'), period, () => { prefs.unit = period.unit; prefs.count = 'all'; savePrefs(prefs); setup(); });
+    el.querySelector('#dir').onclick = (e) => { if (e.target.dataset.v) { prefs.dir = e.target.dataset.v; savePrefsNow(prefs); setup(); } };
+    el.querySelector('#count').onchange = (e) => { prefs.count = e.target.value; savePrefsNow(prefs); setup(); };
+    mountPeriodControl(el.querySelector('#period'), period, () => { prefs.unit = period.unit; prefs.count = 'all'; savePrefsNow(prefs); setup(); });
     el.querySelector('#start').onclick = () => start();
   };
 
@@ -107,7 +112,7 @@ export async function render(el, { person, isStale }) {
       const batch = deck.map((s, k) => ({ id: s.id, correct: res[k] === 'c', k })).filter((r) => res[r.k] && !saved.has(r.k));
       if (!batch.length) return;
       batch.forEach((r) => saved.add(r.k));
-      store.recordResults(person.key, batch.map(({ id, correct }) => ({ id, correct })))
+      store.recordResults(ds, batch.map(({ id, correct }) => ({ id, correct })))
         .then((next) => { stats = next; })
         .catch((e) => { batch.forEach((r) => saved.delete(r.k)); toast('오답 기록 저장 실패: ' + e.message, 4000); });
     };
@@ -170,7 +175,7 @@ export async function render(el, { person, isStale }) {
         <section class="card quiz-card">
           <div class="q-label">${label(qk)}</div>
           <div class="q-text">${esc(s[qk])}</div>
-          <label class="field">${label(ak)} 문장 입력
+          <label class="field">${label(ak)} ${L.unit} 입력
             <textarea id="ans" rows="3" ${r ? 'disabled' : ''} autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${label(ak)}로 써 보세요">${esc(typed[i])}</textarea>
           </label>
           ${!r && SR ? '<button id="mic" class="btn mic" type="button">🎤 말해서 입력</button>' : ''}

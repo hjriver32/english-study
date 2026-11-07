@@ -19,7 +19,7 @@ function calendarHtml(key, sentences, quizDays, ym) {
     const lvl = quizOnly ? 1 : c === 0 ? 0 : c < 3 ? 1 : c < 6 ? 2 : 3;
     const cls = `day lvl${lvl}${quizOnly ? ' quizonly' : ''}${ds === today ? ' today' : ''}`;
     cells += c
-      ? `<a class="${cls}" href="#/${key}/list?date=${ds}" title="${c}문장">${d}</a>`
+      ? `<a class="${cls}" href="#/${key}/sentence/list?date=${ds}" title="${c}문장">${d}</a>`
       : `<span class="${cls}"${quizOnly ? ' title="퀴즈 완료"' : ''}>${d}</span>`;
   }
   return `<div class="cal-head">
@@ -62,7 +62,10 @@ export async function render(el, { isStale }) {
       return `<section class="card person-card" style="--accent:${p.color}">
         <div class="pc-head">
           <h2>${esc(p.name)}</h2>
-          <a class="btn small primary" href="#/${p.key}/add">페이지로 가기</a>
+          <span class="row gap tight">
+            <a class="btn small primary" href="#/${p.key}/sentence/add">문장</a>
+            <a class="btn small" href="#/${p.key}/word/add">단어</a>
+          </span>
         </div>
         <div class="stats">
           <div><b>${list.length}</b><small>누적 문장</small></div>

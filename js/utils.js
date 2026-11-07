@@ -3,6 +3,19 @@ export const PEOPLE = {
   ranie: { key: 'ranie', name: 'RANIE', color: 'var(--ranie)' },
 };
 
+// Each person has two separate study sets: sentences and words (different data files).
+export const KINDS = {
+  sentence: {
+    key: 'sentence', name: '문장', unit: '문장',
+    enLabel: '영어 문장', koLabel: '한글 해석', enHint: 'How have you been?', koHint: '어떻게 지냈어?', rows: 2,
+  },
+  word: {
+    key: 'word', name: '단어', unit: '단어',
+    enLabel: '영어 단어', koLabel: '한글 뜻', enHint: 'apple', koHint: '사과', rows: 1,
+  },
+};
+export const datasetOf = (kind, personKey) => (kind === 'word' ? `${personKey}-words` : personKey);
+
 export const esc = (s) =>
   String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 

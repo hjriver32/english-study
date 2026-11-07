@@ -1,4 +1,4 @@
-import { PEOPLE, esc } from './utils.js';
+import { PEOPLE, KINDS, esc } from './utils.js';
 import { getToken } from './github.js';
 import { render as dashboard } from './views/dashboard.js';
 import { render as addView } from './views/add.js';
@@ -39,18 +39,26 @@ async function route() {
     await settingsView(app, {});
   } else if (PEOPLE[first]) {
     const person = PEOPLE[first];
-    const tab = TABS.find((t) => t.key === second) || TABS[0];
+    // #/wng/<kind>/<tab>; the older #/wng/<tab> form means sentences
+    const kind = KINDS[second] ? second : 'sentence';
+    const tabKey = KINDS[second] ? parts[2] : second;
+    const tab = TABS.find((t) => t.key === tabKey) || TABS[0];
     app.innerHTML = `
       <header class="topbar person" style="--accent:${person.color}">
         <a class="back" href="#/" aria-label="대시보드">‹</a>
         <h1>${esc(person.name)}</h1>
         <a class="icon-btn" href="#/settings" aria-label="설정">⚙️</a>
       </header>
-      <nav class="tabs" style="--accent:${person.color}">
-        ${TABS.map((t) => `<a href="#/${person.key}/${t.key}" class="${t.key === tab.key ? 'active' : ''}">${t.label}</a>`).join('')}
-      </nav>
+      <div class="subnav" style="--accent:${person.color}">
+        <div class="kinds">
+          ${Object.values(KINDS).map((k) => `<a href="#/${person.key}/${k.key}/${tab.key}" class="${k.key === kind ? 'active' : ''}">${k.name}</a>`).join('')}
+        </div>
+        <nav class="tabs">
+          ${TABS.map((t) => `<a href="#/${person.key}/${kind}/${t.key}" class="${t.key === tab.key ? 'active' : ''}">${t.label}</a>`).join('')}
+        </nav>
+      </div>
       <main id="tab-body" class="page" style="--accent:${person.color}"></main>`;
-    await tab.view(document.getElementById('tab-body'), { person, query, isStale: () => my !== token });
+    await tab.view(document.getElementById('tab-body'), { person, kind, query, isStale: () => my !== token });
   } else {
     location.replace('#/');
   }

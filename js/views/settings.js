@@ -1,6 +1,6 @@
 import * as store from '../store.js';
 import { getToken, setToken, clearToken, isDemo } from '../github.js';
-import { PEOPLE, esc, todayStr, download, toast } from '../utils.js';
+import { PEOPLE, esc, todayStr, download, toast, datasetOf } from '../utils.js';
 
 const csvCell = (v) => `"${String(v).replace(/"/g, '""')}"`;
 
@@ -42,9 +42,11 @@ export async function render(el) {
     msg.className = 'muted';
     msg.textContent = '연결 중…';
     try {
-      const lists = await Promise.all(Object.keys(PEOPLE).map((k) => store.load(k, true)));
+      const keys = Object.keys(PEOPLE);
+      const lists = await Promise.all(keys.map((k) => store.load(k, true)));
+      const words = await Promise.all(keys.map((k) => store.load(datasetOf('word', k), true)));
       msg.className = 'ok';
-      msg.textContent = '연결 성공 ✅ ' + Object.values(PEOPLE).map((p, i) => `${p.name} ${lists[i].length}문장`).join(', ');
+      msg.textContent = '연결 성공 ✅ ' + Object.values(PEOPLE).map((p, i) => `${p.name} 문장 ${lists[i].length} · 단어 ${words[i].length}`).join(', ');
       setTimeout(() => (location.hash = '#/'), 900);
     } catch (e) {
       if (prev) setToken(prev); else clearToken();
@@ -67,18 +69,22 @@ export async function render(el) {
     const keys = who === 'all' ? Object.keys(PEOPLE) : [who];
     try {
       const rows = {};
-      for (const k of keys) rows[k] = await store.load(k, true);
+      const words = {};
+      for (const k of keys) {
+        rows[k] = await store.load(k, true);
+        words[k] = await store.load(datasetOf('word', k), true);
+      }
       const day = todayStr();
       if (fmt === 'json') {
         const quizDays = {};
         for (const k of keys) quizDays[k] = await store.loadQuizDays(k, true);
-        download(`english-study-backup-${day}.json`, JSON.stringify({ exportedAt: day, people: rows, quizDays }, null, 2), 'application/json');
+        download(`english-study-backup-${day}.json`, JSON.stringify({ exportedAt: day, people: rows, words, quizDays }, null, 2), 'application/json');
       } else {
-        const lines = ['사람,날짜,영어,한글'];
+        const lines = ['사람,날짜,영어,한글,구분'];
+        const byTime = (a, b) => (a.createdAt < b.createdAt ? -1 : 1);
         for (const k of keys) {
-          for (const s of [...rows[k]].sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))) {
-            lines.push([PEOPLE[k].name, s.date, s.en, s.ko].map(csvCell).join(','));
-          }
+          for (const s of [...rows[k]].sort(byTime)) lines.push([PEOPLE[k].name, s.date, s.en, s.ko, '문장'].map(csvCell).join(','));
+          for (const s of [...words[k]].sort(byTime)) lines.push([PEOPLE[k].name, s.date, s.en, s.ko, '단어'].map(csvCell).join(','));
         }
         download(`english-study-backup-${day}.csv`, '﻿' + lines.join('\r\n'), 'text/csv;charset=utf-8');
       }
